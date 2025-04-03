@@ -117,6 +117,7 @@ pub fn solve(starting_hash: &[u8], start: u32) -> Option<(u32, u32)> {
     let row_size = BOARD_SIZE.isqrt();
     let mut board = BTreeMap::new();
     let mut last_king = None;
+    let mut threats = vec![];
     for i in start..MAX_TRIES {
         let e = prover::hash(starting_hash, i);
         let king_id: u8 = Piece::KING.into();
@@ -127,12 +128,48 @@ pub fn solve(starting_hash: &[u8], start: u32) -> Option<(u32, u32)> {
         board.insert(pos, (p, i));
         if p == Piece::KING {
             last_king = Some((pos, i));
+            threats = in_check_threats(&board, row_size, pos);
+        } else if let Some((last_king_pos, last_king_nonce)) = last_king {
+            {
+                let (king_x, king_y) = pos_to_xy(row_size, last_king_pos);
+                let (piece_x, piece_y) = pos_to_xy(row_size, pos);
+
+                let dx = if king_x > piece_x {
+                    king_x - piece_x
+                } else {
+                    piece_x - king_x
+                };
+                let dy = if king_y > piece_y {
+                    king_y - piece_y
+                } else {
+                    piece_y - king_y
+                };
+
+                if dx + dy == 0 {
+                    continue;
+                }
+
+                let solved = match p {
+                    Piece::PAWN => piece_y + 1 == king_y && dx == 1,
+                    Piece::CASTLE => dx == 0 || dy == 0,
+                    Piece::QUEEN => dx == 0 || dy == 0 || dx == dy,
+                    Piece::BISHOP => dx == dy,
+                    Piece::KNIGHT => dx * dy == 2,
+                    Piece::KING => dx <= 1 && dy <= 1,
+                };
+
+                if solved {
+                    threats.push(i);
+                }
+            }
         }
-        if let Some((last_king_pos, last_king_nonce)) = last_king {
-            let mut threats = in_check_threats(&board, row_size, last_king_pos);
+
+        if let Some((_last_king_pos, last_king_nonce)) = last_king {
             if threats.len() >= CHECKS_NEEDED as usize {
                 threats.push(last_king_nonce);
-                return Some((*threats.iter().min().unwrap(), i));
+                let first_threat = *threats.iter().min().unwrap();
+                println!("first_threat: {:?}", threats);
+                return Some((first_threat, i));
             }
         }
     }
@@ -166,7 +203,18 @@ mod test {
 
     proptest! {
         #[test]
-        fn test_solve(starting_hash in any::<[u8; 64]>()) {
+        fn test_solve(starting_hash in any::<[u8; 32]>()) {
+            let y: u32 = 10;
+            let a: i32 = -1;
+            let x: u32 = y.wrapping_add_signed(a);
+            assert_eq!(x, 9);
+            println!("x: {}", CHECKS_NEEDED);
+            for i in 0..10 {
+                loop {
+                    println!("i: {}", i);
+                    break;
+                }
+            }
             // First, let's test if the user-defined algorithm is consistent.
             let (e_l, e_h) = solve(&starting_hash, 0).unwrap();
             // Let's run our function against the first invocation of the function!
